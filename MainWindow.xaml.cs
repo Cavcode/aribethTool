@@ -90,8 +90,17 @@ namespace aribeth
         private void PasteRowMenuItem_Click(object sender, RoutedEventArgs e) => PasteRows();
         private void AddColumnMenuItem_Click(object sender, RoutedEventArgs e) => AddColumn();
         private void RemoveColumnMenuItem_Click(object sender, RoutedEventArgs e) => RemoveColumn();
-        private void FindMenuItem_Click(object sender, RoutedEventArgs e) => SetStatus("Find");
-        private void ReplaceMenuItem_Click(object sender, RoutedEventArgs e) => ReplaceValues();
+        private void FindMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            SearchTextBox.Focus();
+            SearchTextBox.SelectAll();
+            SetStatus("Find");
+        }
+        private void ReplaceMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            ReplaceTextBox.Focus();
+            ReplaceTextBox.SelectAll();
+        }
         private void Normalize2DAMenuItem_Click(object sender, RoutedEventArgs e) => Normalize2DA();
         private void Merge2DAMenuItem_Click(object sender, RoutedEventArgs e) => Merge2DA();
         private void CheckIssuesMenuItem_Click(object sender, RoutedEventArgs e) => Check2DAIssues();
@@ -105,8 +114,18 @@ namespace aribeth
         private void CopyButton_Click(object sender, RoutedEventArgs e) => CopyRows(cut: false);
         private void PasteButton_Click(object sender, RoutedEventArgs e) => PasteRows();
         private void CutButton_Click(object sender, RoutedEventArgs e) => CopyRows(cut: true);
-        private void FindButton_Click(object sender, RoutedEventArgs e) => SetStatus("Find");
-        private void ReplaceButton_Click(object sender, RoutedEventArgs e) => ReplaceValues();
+        private void FindButton_Click(object sender, RoutedEventArgs e)
+        {
+            SearchTextBox.Focus();
+            SearchTextBox.SelectAll();
+            SetStatus("Find");
+        }
+        private void ReplaceButton_Click(object sender, RoutedEventArgs e)
+        {
+            ReplaceTextBox.Focus();
+            ReplaceTextBox.SelectAll();
+            ReplaceValues();
+        }
         private void AddColumnButton_Click(object sender, RoutedEventArgs e) => AddColumn();
         private void RemoveColumnButton_Click(object sender, RoutedEventArgs e) => RemoveColumn();
 
@@ -1652,6 +1671,14 @@ namespace aribeth
                 // DataView.RowFilter does not support regex; keep all rows and rely on selection.
                 _twoDaTable.DefaultView.RowFilter = string.Empty;
             }
+            else if (WildcardCheckBox.IsChecked == true)
+            {
+                var likePattern = BuildLikePattern(searchText).Replace("'", "''");
+                var conditions = _twoDaTable.Columns
+                    .Cast<DataColumn>()
+                    .Select(column => $"CONVERT([{column.ColumnName}], 'System.String') LIKE '{likePattern}'");
+                _twoDaTable.DefaultView.RowFilter = string.Join(" OR ", conditions);
+            }
             else
             {
                 var escaped = searchText.Replace("'", "''");
@@ -1678,6 +1705,7 @@ namespace aribeth
             }
 
             Regex? regex = null;
+            Regex? wildcardRegex = null;
             if (RegexCheckBox.IsChecked == true)
             {
                 try
@@ -1689,6 +1717,10 @@ namespace aribeth
                     return;
                 }
             }
+            else if (WildcardCheckBox.IsChecked == true)
+            {
+                wildcardRegex = BuildWildcardRegex(query, ignoreCase: true);
+            }
 
             foreach (DataRowView rowView in _twoDaTable.DefaultView)
             {
@@ -1697,7 +1729,9 @@ namespace aribeth
                     var cell = rowView.Row[column]?.ToString() ?? string.Empty;
                     var match = regex != null
                         ? regex.IsMatch(cell)
-                        : cell.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                        : wildcardRegex != null
+                            ? wildcardRegex.IsMatch(cell)
+                            : cell.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
 
                     if (match)
                     {
@@ -1726,6 +1760,7 @@ namespace aribeth
             }
 
             Regex? regex = null;
+            Regex? wildcardRegex = null;
             if (RegexCheckBox.IsChecked == true)
             {
                 try
@@ -1736,6 +1771,10 @@ namespace aribeth
                 {
                     return;
                 }
+            }
+            else if (WildcardCheckBox.IsChecked == true)
+            {
+                wildcardRegex = BuildWildcardRegex(query, ignoreCase: true);
             }
 
             var view = _twoDaTable.DefaultView;
@@ -1767,7 +1806,9 @@ namespace aribeth
                 var cell = rowView.Row[column]?.ToString() ?? string.Empty;
                 var match = regex != null
                     ? regex.IsMatch(cell)
-                    : cell.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                    : wildcardRegex != null
+                        ? wildcardRegex.IsMatch(cell)
+                        : cell.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
 
                 if (match)
                 {
@@ -2133,27 +2174,15 @@ namespace aribeth
                 return;
             }
 
-            var dialog = CreateReplaceDialog();
-            if (dialog.ShowDialog() != true)
-            {
-                return;
-            }
-
-            var findText = ((TextBox)dialog.Tag!).Text;
-            var replaceText = ((TextBox)dialog.FindName("ReplaceTextBox")).Text;
-            var regexCheck = (CheckBox)dialog.FindName("RegexCheckBox");
-            var caseCheck = (CheckBox)dialog.FindName("CaseCheckBox");
-            var selectedOnlyCheck = (CheckBox)dialog.FindName("SelectedOnlyCheckBox");
-
+            var findText = SearchTextBox.Text ?? string.Empty;
+            var replaceText = ReplaceTextBox.Text ?? string.Empty;
             if (string.IsNullOrWhiteSpace(findText))
             {
                 SetStatus("Find text is empty");
                 return;
             }
 
-            var targets = selectedOnlyCheck.IsChecked == true
-                ? GetSelectedRowViews()
-                : _twoDaTable.DefaultView.Cast<DataRowView>().ToList();
+            var targets = _twoDaTable.DefaultView.Cast<DataRowView>().ToList();
 
             if (targets.Count == 0)
             {
@@ -2162,12 +2191,12 @@ namespace aribeth
             }
 
             var replacements = 0;
-            if (regexCheck.IsChecked == true)
+            if (RegexCheckBox.IsChecked == true)
             {
                 Regex regex;
                 try
                 {
-                    regex = new Regex(findText, caseCheck.IsChecked == true ? RegexOptions.None : RegexOptions.IgnoreCase);
+                    regex = new Regex(findText, RegexOptions.IgnoreCase);
                 }
                 catch (ArgumentException)
                 {
@@ -2194,9 +2223,31 @@ namespace aribeth
                     }
                 }
             }
+            else if (WildcardCheckBox.IsChecked == true)
+            {
+                var wildcardRegex = BuildWildcardRegex(findText, ignoreCase: true);
+                foreach (var rowView in targets)
+                {
+                    foreach (DataColumn column in _twoDaTable.Columns)
+                    {
+                        if (column.ColumnName == "Row")
+                        {
+                            continue;
+                        }
+
+                        var original = rowView.Row[column]?.ToString() ?? string.Empty;
+                        var updated = wildcardRegex.Replace(original, replaceText);
+                        if (!string.Equals(original, updated, StringComparison.Ordinal))
+                        {
+                            rowView.Row[column] = updated;
+                            replacements++;
+                        }
+                    }
+                }
+            }
             else
             {
-                var comparison = caseCheck.IsChecked == true ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                var comparison = StringComparison.OrdinalIgnoreCase;
                 foreach (var rowView in targets)
                 {
                     foreach (DataColumn column in _twoDaTable.Columns)
@@ -2245,6 +2296,48 @@ namespace aribeth
             }
 
             return builder.ToString();
+        }
+
+        private static bool ContainsWildcard(string text) => text.Contains('*') || text.Contains('?');
+
+        private static string BuildLikePattern(string pattern)
+        {
+            var hasWildcard = ContainsWildcard(pattern);
+            var builder = new StringBuilder();
+            foreach (var c in pattern)
+            {
+                switch (c)
+                {
+                    case '*':
+                        builder.Append('%');
+                        break;
+                    case '?':
+                        builder.Append('_');
+                        break;
+                    case '%':
+                    case '_':
+                    case '[':
+                    case ']':
+                        builder.Append('[').Append(c).Append(']');
+                        break;
+                    default:
+                        builder.Append(c);
+                        break;
+                }
+            }
+
+            var like = builder.ToString();
+            return hasWildcard ? like : $"%{like}%";
+        }
+
+        private static Regex BuildWildcardRegex(string pattern, bool ignoreCase)
+        {
+            var hasWildcard = ContainsWildcard(pattern);
+            var escaped = Regex.Escape(pattern)
+                .Replace("\\*", ".*")
+                .Replace("\\?", ".");
+            var regexPattern = hasWildcard ? escaped : $".*{escaped}.*";
+            return new Regex(regexPattern, ignoreCase ? RegexOptions.IgnoreCase : RegexOptions.None);
         }
 
         private string? PromptForText(string title, string label)

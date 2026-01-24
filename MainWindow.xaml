@@ -418,8 +418,14 @@
                                  Margin="0,0,10,0"
                                  TextChanged="SearchTextBox_TextChanged"
                                  KeyDown="SearchTextBox_KeyDown"
-                                 ToolTip="Search in all cells (supports regex)"/>
-                        <CheckBox x:Name="RegexCheckBox" Content="Regex" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                 ToolTip="Search in all cells (supports regex and wildcards)"/>
+                        <CheckBox x:Name="RegexCheckBox" Content="Regex" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <CheckBox x:Name="WildcardCheckBox" Content="Wildcards" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Replace:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                        <TextBox x:Name="ReplaceTextBox"
+                                 Width="200"
+                                 Margin="0,0,10,0"
+                                 ToolTip="Replace text (supports wildcards when enabled)"/>
                         <Button Content="Clear Filters" Click="ClearFiltersButton_Click" Margin="10,0,0,0"/>
                     </StackPanel>
 
