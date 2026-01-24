@@ -27,6 +27,12 @@ namespace aribeth
         private string? _currentFilePath;
         private DataTable? _twoDaTable;
         private readonly List<List<string>> _rowClipboard = new();
+        private int _twoDaIndexWidth;
+        private int _twoDaHeaderIndent = 1;
+        private List<int> _twoDaColumnWidths = new();
+        private List<int> _twoDaHeaderTokenStarts = new();
+        private int _twoDaHeaderVisualLength;
+        private readonly Dictionary<string, (List<int> Starts, int VisualLength)> _twoDaRowLayouts = new();
         private string? _nwn2daPath;
         private string? _currentTlkPath;
         private string? _nwnTlkPath;
@@ -175,9 +181,18 @@ namespace aribeth
                 e.Handled = true;
             }
         }
+        private void TLKIndexTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                GoToTlkIndex();
+                e.Handled = true;
+            }
+        }
         private void TLKClearFiltersButton_Click(object sender, RoutedEventArgs e) => SetStatus("TLK filters cleared");
         private void TLKRawModeCheckBox_Checked(object sender, RoutedEventArgs e) => SetTlkRawMode(true);
         private void TLKRawModeCheckBox_Unchecked(object sender, RoutedEventArgs e) => SetTlkRawMode(false);
+        private void TLKGoToIndexButton_Click(object sender, RoutedEventArgs e) => GoToTlkIndex();
 
         private void Command_CanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = true;
         private void UndoCommand_Executed(object sender, ExecutedRoutedEventArgs e) => Undo();
@@ -268,6 +283,12 @@ namespace aribeth
             {
                 _currentFilePath = null;
                 _twoDaTable = null;
+                _twoDaIndexWidth = 0;
+                _twoDaHeaderIndent = 1;
+                _twoDaColumnWidths = new List<int>();
+                _twoDaHeaderTokenStarts = new List<int>();
+                _twoDaHeaderVisualLength = 0;
+                _twoDaRowLayouts.Clear();
                 DataGrid2DA.ItemsSource = null;
                 SetStatus("Closed 2DA");
             }
@@ -340,6 +361,7 @@ namespace aribeth
 
                 var parsed = TwoDAParser.Parse(filePath, LogMessage, strictHeader: true);
                 _twoDaTable = ToDataTable(parsed);
+                UpdateTwoDaFormattingState(parsed);
                 DataGrid2DA.ItemsSource = _twoDaTable.DefaultView;
                 HookTwoDaEvents();
                 CaptureTwoDaSnapshot(clearRedo: true);
@@ -381,7 +403,7 @@ namespace aribeth
 
             try
             {
-                var data = FromDataTable(_twoDaTable);
+                var data = BuildTwoDaDataFromTable();
                 var contents = TwoDAParser.Serialize(data);
                 File.WriteAllText(_currentFilePath!, contents);
                 FileInfoTextBlock.Text = _currentFilePath!;
@@ -449,6 +471,52 @@ namespace aribeth
             }
 
             return data;
+        }
+
+        private TwoDAData BuildTwoDaDataFromTable()
+        {
+            var data = FromDataTable(_twoDaTable!);
+            ApplyTwoDaFormatting(data);
+            return data;
+        }
+
+        private void ApplyTwoDaFormatting(TwoDAData data)
+        {
+            data.IndexWidth = _twoDaIndexWidth;
+            data.HeaderIndent = _twoDaHeaderIndent;
+            data.ColumnWidths.Clear();
+            data.ColumnWidths.AddRange(_twoDaColumnWidths);
+            data.HeaderTokenStarts.Clear();
+            data.HeaderTokenStarts.AddRange(_twoDaHeaderTokenStarts);
+            data.HeaderVisualLength = _twoDaHeaderVisualLength;
+
+            foreach (var row in data.Rows)
+            {
+                row.TokenStarts.Clear();
+                row.VisualLength = 0;
+                if (!string.IsNullOrWhiteSpace(row.Index) && _twoDaRowLayouts.TryGetValue(row.Index, out var layout))
+                {
+                    row.TokenStarts.AddRange(layout.Starts);
+                    row.VisualLength = layout.VisualLength;
+                }
+            }
+        }
+
+        private void UpdateTwoDaFormattingState(TwoDAData data)
+        {
+            _twoDaIndexWidth = data.IndexWidth;
+            _twoDaHeaderIndent = data.HeaderIndent;
+            _twoDaColumnWidths = data.ColumnWidths.ToList();
+            _twoDaHeaderTokenStarts = data.HeaderTokenStarts.ToList();
+            _twoDaHeaderVisualLength = data.HeaderVisualLength;
+            _twoDaRowLayouts.Clear();
+            foreach (var row in data.Rows)
+            {
+                if (!string.IsNullOrWhiteSpace(row.Index) && row.TokenStarts.Count > 0)
+                {
+                    _twoDaRowLayouts[row.Index] = (row.TokenStarts.ToList(), row.VisualLength);
+                }
+            }
         }
 
         private void LogMessage(string message)
@@ -1071,14 +1139,19 @@ namespace aribeth
                 return entries;
             }
 
-            foreach (var entryNode in entriesNode)
+            var entryMap = new Dictionary<int, TlkEntry>();
+            var maxId = -1;
+
+            for (var i = 0; i < entriesNode.Count; i++)
             {
+                var entryNode = entriesNode[i];
                 if (entryNode is not JsonObject entryObj)
                 {
+                    maxId = Math.Max(maxId, i);
                     continue;
                 }
 
-                var id = entryObj["id"]?.GetValue<int>() ?? 0;
+                var id = entryObj["id"]?.GetValue<int>() ?? i;
                 var text = entryObj["text"]?.GetValue<string>() ?? string.Empty;
                 var sound = entryObj["sound"]?.GetValue<string>() ?? string.Empty;
                 var duration = entryObj["soundLength"]?.ToString() ?? string.Empty;
@@ -1091,7 +1164,26 @@ namespace aribeth
                     Duration = duration
                 };
                 entry.RecalculateLength();
-                entries.Add(entry);
+                entryMap[id] = entry;
+                maxId = Math.Max(maxId, id);
+            }
+
+            for (var id = 0; id <= maxId; id++)
+            {
+                if (entryMap.TryGetValue(id, out var entry))
+                {
+                    entries.Add(entry);
+                    continue;
+                }
+
+                entries.Add(new TlkEntry
+                {
+                    Index = id + TlkUserIndexBase,
+                    Text = string.Empty,
+                    SoundResRef = string.Empty,
+                    Duration = string.Empty,
+                    Length = 0
+                });
             }
 
             return entries;
@@ -1223,7 +1315,7 @@ namespace aribeth
                 return;
             }
 
-            var data = FromDataTable(_twoDaTable);
+            var data = BuildTwoDaDataFromTable();
             var serialized = TwoDAParser.Serialize(data);
             if (_twoDaUndo.Count == 0 || _twoDaUndo.Peek() != serialized)
             {
@@ -1292,6 +1384,7 @@ namespace aribeth
             var tempPath = Path.GetTempFileName();
             File.WriteAllText(tempPath, previous);
             var data = TwoDAParser.Parse(tempPath, LogMessage, strictHeader: true);
+            UpdateTwoDaFormattingState(data);
             _twoDaTable = ToDataTable(data);
             DataGrid2DA.ItemsSource = _twoDaTable.DefaultView;
             HookTwoDaEvents();
@@ -1313,6 +1406,7 @@ namespace aribeth
             var tempPath = Path.GetTempFileName();
             File.WriteAllText(tempPath, next);
             var data = TwoDAParser.Parse(tempPath, LogMessage, strictHeader: true);
+            UpdateTwoDaFormattingState(data);
             _twoDaTable = ToDataTable(data);
             DataGrid2DA.ItemsSource = _twoDaTable.DefaultView;
             HookTwoDaEvents();
@@ -1923,6 +2017,55 @@ namespace aribeth
             }
         }
 
+        private void GoToTlkIndex()
+        {
+            if (_tlkEntries.Count == 0)
+            {
+                SetStatus("No TLK loaded");
+                return;
+            }
+
+            var raw = TLKIndexTextBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                SetStatus("Enter a TLK index");
+                return;
+            }
+
+            if (!int.TryParse(raw, out var index))
+            {
+                SetStatus("Invalid TLK index");
+                return;
+            }
+
+            var entry = _tlkEntries.FirstOrDefault(e => e.Index == index);
+            if (entry == null && index < TlkUserIndexBase)
+            {
+                entry = _tlkEntries.FirstOrDefault(e => e.Index == index + TlkUserIndexBase);
+                if (entry != null)
+                {
+                    index = entry.Index;
+                }
+            }
+
+            if (entry == null)
+            {
+                SetStatus($"Index {index} not found");
+                return;
+            }
+
+            if (TLKRawModeCheckBox.IsChecked == true)
+            {
+                TLKRawModeCheckBox.IsChecked = false;
+            }
+
+            DataGridTLK.SelectedItem = entry;
+            var targetColumn = DataGridTLK.Columns.FirstOrDefault(c => string.Equals(c.Header?.ToString(), "Text", StringComparison.OrdinalIgnoreCase));
+            DataGridTLK.ScrollIntoView(entry, targetColumn);
+            DataGridTLK.CurrentCell = new DataGridCellInfo(entry, targetColumn);
+            SetStatus($"Navigated to index {index}");
+        }
+
         private void ClearFilters()
         {
             ColumnFilterTextBox.Text = string.Empty;
@@ -2131,6 +2274,7 @@ namespace aribeth
                 row[name] = "****";
             }
 
+            _twoDaColumnWidths.Add(Math.Max(1, name.Length));
             _twoDaTable.AcceptChanges();
             SetStatus($"Added column: {name}");
         }
@@ -2161,7 +2305,12 @@ namespace aribeth
                 return;
             }
 
+            var removeIndex = columns.IndexOf(selected);
             _twoDaTable.Columns.Remove(selected);
+            if (removeIndex >= 0 && removeIndex < _twoDaColumnWidths.Count)
+            {
+                _twoDaColumnWidths.RemoveAt(removeIndex);
+            }
             _twoDaTable.AcceptChanges();
             SetStatus($"Removed column: {selected}");
         }

@@ -497,6 +497,13 @@
                                   Margin="0,0,10,0"
                                   Checked="TLKRawModeCheckBox_Checked"
                                   Unchecked="TLKRawModeCheckBox_Unchecked"/>
+                        <TextBlock Text="Go to Index:" VerticalAlignment="Center" Margin="10,0,5,0"/>
+                        <TextBox x:Name="TLKIndexTextBox"
+                                 Width="100"
+                                 Margin="0,0,6,0"
+                                 KeyDown="TLKIndexTextBox_KeyDown"
+                                 ToolTip="Enter TLK index (e.g. 16777216)"/>
+                        <Button Content="Go" Click="TLKGoToIndexButton_Click" Margin="0,0,10,0"/>
                         <Button Content="Clear Filters" Click="TLKClearFiltersButton_Click"/>
                     </StackPanel>
 
@@ -519,11 +526,27 @@
                                   CanUserResizeColumns="True"
                                   CanUserSortColumns="True"
                                   SelectionMode="Single"
+                                  MinRowHeight="24"
                                   HeadersVisibility="All">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Index" Binding="{Binding Index}" Width="90" IsReadOnly="True"/>
                                 <DataGridTextColumn Header="Length" Binding="{Binding Length}" Width="80" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="Text" Binding="{Binding Text}" Width="*" IsReadOnly="False"/>
+                                <DataGridTemplateColumn Header="Text" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Text}"
+                                                       TextWrapping="Wrap"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True"
+                                                     TextWrapping="Wrap"
+                                                     VerticalScrollBarVisibility="Auto"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="SoundResRef" Binding="{Binding SoundResRef}" Width="150" IsReadOnly="False"/>
                                 <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="100" IsReadOnly="False"/>
                             </DataGrid.Columns>
