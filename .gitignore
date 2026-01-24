@@ -1,0 +1,25 @@
+## Build output
+bin/
+obj/
+
+## Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.slnx
+
+## Rider
+.idea/
+
+## Logs
+*.log
+
+## OS / tooling
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak
+
