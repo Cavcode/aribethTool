@@ -403,6 +403,8 @@ namespace aribeth
 
             try
             {
+                DataGrid2DA.CommitEdit(DataGridEditingUnit.Cell, true);
+                DataGrid2DA.CommitEdit(DataGridEditingUnit.Row, true);
                 var data = BuildTwoDaDataFromTable();
                 var contents = TwoDAParser.Serialize(data);
                 File.WriteAllText(_currentFilePath!, contents);

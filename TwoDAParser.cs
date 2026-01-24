@@ -376,6 +376,11 @@ namespace aribeth
                     {
                         minStart = Math.Max(minStart, starts[i - 1] + columnWidths[i - 1]);
                     }
+
+                    if (i < count - 1)
+                    {
+                        minStart = Math.Max(minStart, start + token.Length + 1);
+                    }
                 }
             }
 
