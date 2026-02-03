@@ -449,7 +449,16 @@
                                   CanUserSortColumns="True"
                                   SelectionMode="Extended"
                                   SelectionUnit="CellOrRowHeader"
-                                  ClipboardCopyMode="IncludeHeader"
+                                  ClipboardCopyMode="ExcludeHeader"
+                                  RowHeaderWidth="40"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="True"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.CacheLength="2"
+                                  VirtualizingPanel.CacheLengthUnit="Item"
+                                  ScrollViewer.IsDeferredScrollingEnabled="True"
+                                  ScrollViewer.CanContentScroll="True"
                                   FrozenColumnCount="2"
                                   HeadersVisibility="All">
                             <DataGrid.ContextMenu>
@@ -527,6 +536,14 @@
                                   CanUserSortColumns="True"
                                   SelectionMode="Single"
                                   MinRowHeight="24"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="True"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.CacheLength="2"
+                                  VirtualizingPanel.CacheLengthUnit="Item"
+                                  ScrollViewer.IsDeferredScrollingEnabled="True"
+                                  ScrollViewer.CanContentScroll="True"
                                   HeadersVisibility="All">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Index" Binding="{Binding Index}" Width="90" IsReadOnly="True"/>

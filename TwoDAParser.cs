@@ -151,6 +151,7 @@ namespace aribeth
         public static string Serialize(TwoDAData data)
         {
             var (indexWidth, columnWidths, headerIndent) = CalculateWidths(data);
+            var useHeaderLayout = data.HeaderTokenStarts.Count == data.Columns.Count;
             var builder = new StringBuilder();
             builder.AppendLine("2DA V2.0");
             builder.AppendLine();
@@ -161,7 +162,7 @@ namespace aribeth
                 headerIndent,
                 data.HeaderVisualLength,
                 columnWidths,
-                useColumnWidths: data.HeaderTokenStarts.Count == 0));
+                useColumnWidths: true));
 
             for (var i = 0; i < data.Rows.Count; i++)
             {
@@ -173,14 +174,17 @@ namespace aribeth
                     tokens.Add(col < row.Values.Count ? row.Values[col] : "****");
                 }
 
+                var rowStarts = useHeaderLayout
+                    ? new List<int> { 0 }.Concat(data.HeaderTokenStarts).ToList()
+                    : row.TokenStarts;
                 builder.AppendLine(BuildLineFromStarts(
                     tokens,
-                    row.TokenStarts,
+                    rowStarts,
                     0,
                     row.VisualLength,
                     columnWidths,
                     indexWidth,
-                    useColumnWidths: row.TokenStarts.Count == 0));
+                    useColumnWidths: true));
             }
 
             return builder.ToString();
@@ -341,6 +345,32 @@ namespace aribeth
             }
 
             var indexWidth = Math.Max(data.IndexWidth, maxIndex);
+
+            if (data.HeaderTokenStarts.Count == columnCount && columnCount > 0)
+            {
+                columnWidths.Clear();
+                for (var i = 0; i < columnCount; i++)
+                {
+                    var start = data.HeaderTokenStarts[i];
+                    var nextStart = i + 1 < columnCount ? data.HeaderTokenStarts[i + 1] : data.HeaderVisualLength;
+                    var headerWidth = Math.Max(0, nextStart - start);
+                    var nameLength = data.Columns[i]?.Length ?? 0;
+                    var maxLength = nameLength;
+                    foreach (var row in data.Rows)
+                    {
+                        if (row.Values.Count > i)
+                        {
+                            maxLength = Math.Max(maxLength, row.Values[i]?.Length ?? 0);
+                        }
+                    }
+
+                    var width = Math.Max(headerWidth, maxLength);
+                    columnWidths.Add(width);
+                }
+
+                indexWidth = Math.Max(indexWidth, headerIndent);
+            }
+
             return (indexWidth, columnWidths, headerIndent);
         }
 

@@ -197,9 +197,21 @@ namespace aribeth
         private void Command_CanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = true;
         private void UndoCommand_Executed(object sender, ExecutedRoutedEventArgs e) => Undo();
         private void RedoCommand_Executed(object sender, ExecutedRoutedEventArgs e) => Redo();
-        private void CopyCommand_Executed(object sender, ExecutedRoutedEventArgs e) => CopyRows(cut: false);
-        private void CutCommand_Executed(object sender, ExecutedRoutedEventArgs e) => CopyRows(cut: true);
-        private void PasteCommand_Executed(object sender, ExecutedRoutedEventArgs e) => PasteRows();
+        private void CopyCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            CopyRows(cut: false);
+            e.Handled = true;
+        }
+        private void CutCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            CopyRows(cut: true);
+            e.Handled = true;
+        }
+        private void PasteCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            PasteRows();
+            e.Handled = true;
+        }
         private void FindCommand_Executed(object sender, ExecutedRoutedEventArgs e) => FindMenuItem_Click(sender, e);
         private void ReplaceCommand_Executed(object sender, ExecutedRoutedEventArgs e) => ReplaceMenuItem_Click(sender, e);
         private void OpenCommand_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -2092,10 +2104,15 @@ namespace aribeth
                 return;
             }
 
+            var columns = _twoDaTable.Columns
+                .Cast<DataColumn>()
+                .Where(column => column.ColumnName != "Row")
+                .ToList();
+
             _rowClipboard.Clear();
             foreach (var rowView in selected)
             {
-                var values = rowView.Row.ItemArray.Select(value => value?.ToString() ?? string.Empty).ToList();
+                var values = columns.Select(column => rowView.Row[column]?.ToString() ?? string.Empty).ToList();
                 _rowClipboard.Add(values);
             }
 
@@ -2126,10 +2143,15 @@ namespace aribeth
                 return;
             }
 
+            var columns = _twoDaTable.Columns
+                .Cast<DataColumn>()
+                .Where(column => column.ColumnName != "Row")
+                .ToList();
+
             var insertionIndex = GetInsertionIndex();
             if (_rowClipboard.Count == 0 && Clipboard.ContainsText())
             {
-                _rowClipboard.AddRange(ParseClipboardRows(Clipboard.GetText(), _twoDaTable.Columns.Count));
+                _rowClipboard.AddRange(ParseClipboardRows(Clipboard.GetText(), columns.Count));
             }
 
             if (_rowClipboard.Count == 0)
@@ -2138,25 +2160,65 @@ namespace aribeth
                 return;
             }
 
-            foreach (var rowValues in _rowClipboard)
+            var targetRowView = DataGrid2DA.CurrentItem as DataRowView;
+            var targetIndex = targetRowView != null ? _twoDaTable.Rows.IndexOf(targetRowView.Row) : insertionIndex;
+            if (targetIndex < 0)
             {
-                var row = _twoDaTable.NewRow();
-                for (var i = 0; i < _twoDaTable.Columns.Count; i++)
-                {
-                    row[i] = i < rowValues.Count ? rowValues[i] : "****";
-                }
-
-                if (insertionIndex >= 0 && insertionIndex < _twoDaTable.Rows.Count)
-                {
-                    _twoDaTable.Rows.InsertAt(row, insertionIndex++);
-                }
-                else
-                {
-                    _twoDaTable.Rows.Add(row);
-                }
+                targetIndex = _twoDaTable.Rows.Count;
             }
 
-            _twoDaTable.AcceptChanges();
+            _suppressUndoCapture = true;
+            DataGrid2DA.SelectedCells.Clear();
+            DataGrid2DA.Visibility = Visibility.Collapsed;
+            _twoDaTable.BeginLoadData();
+            try
+            {
+                var rowColumnIndex = _twoDaTable.Columns["Row"].Ordinal;
+                var columnOrdinals = columns.Select(column => column.Ordinal).ToArray();
+                var columnCount = _twoDaTable.Columns.Count;
+
+                for (var i = 0; i < _rowClipboard.Count; i++)
+                {
+                    var rowValues = _rowClipboard[i];
+                    DataRow row;
+                    if (targetIndex < _twoDaTable.Rows.Count)
+                    {
+                        row = _twoDaTable.Rows[targetIndex];
+                    }
+                    else
+                    {
+                        row = _twoDaTable.NewRow();
+                    }
+
+                    var values = new object[columnCount];
+                    for (var v = 0; v < values.Length; v++)
+                    {
+                        values[v] = "****";
+                    }
+
+                    for (var colIndex = 0; colIndex < columnOrdinals.Length; colIndex++)
+                    {
+                        values[columnOrdinals[colIndex]] = colIndex < rowValues.Count ? rowValues[colIndex] : "****";
+                    }
+
+                    values[rowColumnIndex] = targetIndex.ToString();
+                    row.ItemArray = values;
+
+                    if (row.RowState == DataRowState.Detached)
+                    {
+                        _twoDaTable.Rows.Add(row);
+                    }
+                    targetIndex++;
+                }
+            }
+            finally
+            {
+                _twoDaTable.EndLoadData();
+                _suppressUndoCapture = false;
+                DataGrid2DA.Visibility = Visibility.Visible;
+            }
+
+            // Skip AcceptChanges for faster paste; changes remain pending for save/undo.
             SetStatus("Pasted rows");
         }
 
@@ -2167,6 +2229,14 @@ namespace aribeth
             foreach (var line in lines)
             {
                 var tokens = line.Split('\t').Select(token => token.Trim()).ToList();
+                if (tokens.Count == columnCount + 1 && int.TryParse(tokens[0], out _))
+                {
+                    tokens.RemoveAt(0);
+                }
+                else if (tokens.Count > columnCount)
+                {
+                    tokens = tokens.Take(columnCount).ToList();
+                }
                 while (tokens.Count < columnCount)
                 {
                     tokens.Add("****");
