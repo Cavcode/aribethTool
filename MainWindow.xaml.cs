@@ -48,6 +48,11 @@ namespace aribeth
         private const int TlkUserIndexBase = 16777216;
         private JsonObject? _tlkJsonRoot;
 
+        private static readonly string SettingsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "aribeth",
+            "settings.json");
+
         public MainWindow()
         {
             InitializeComponent();
@@ -55,6 +60,136 @@ namespace aribeth
             DataGridTLK.ItemsSource = _tlkEntries;
             DataGridTLK.CellEditEnding += DataGridTLK_CellEditEnding;
             UpdateEmptyStateImages();
+            RestoreWindowPosition();
+            Closing += MainWindow_Closing;
+
+            var args = Environment.GetCommandLineArgs();
+            if (args.Length > 1)
+            {
+                var filePath = args[1];
+                Dispatcher.InvokeAsync(() => OpenFileByExtension(filePath));
+            }
+        }
+
+        private void OpenFileByExtension(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            {
+                return;
+            }
+
+            if (filePath.EndsWith(".tlk", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = OpenTlkFileAsync(filePath);
+            }
+            else
+            {
+                Open2DAFile(filePath);
+            }
+        }
+
+        private void Window_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                if (files != null && files.Length > 0)
+                {
+                    var ext = Path.GetExtension(files[0]).ToLowerInvariant();
+                    if (ext == ".2da" || ext == ".tlk")
+                    {
+                        e.Effects = DragDropEffects.Copy;
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void Window_Drop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                return;
+            }
+
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (files == null || files.Length == 0)
+            {
+                return;
+            }
+
+            foreach (var file in files)
+            {
+                OpenFileByExtension(file);
+            }
+        }
+
+        private void SaveWindowPosition()
+        {
+            try
+            {
+                var settings = new JsonObject
+                {
+                    ["Left"] = RestoreBounds.Left,
+                    ["Top"] = RestoreBounds.Top,
+                    ["Width"] = RestoreBounds.Width,
+                    ["Height"] = RestoreBounds.Height,
+                    ["Maximized"] = WindowState == WindowState.Maximized
+                };
+
+                Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+                File.WriteAllText(SettingsPath, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch
+            {
+                // Swallow save failures.
+            }
+        }
+
+        private void RestoreWindowPosition()
+        {
+            try
+            {
+                if (!File.Exists(SettingsPath))
+                {
+                    return;
+                }
+
+                var json = File.ReadAllText(SettingsPath);
+                var settings = JsonNode.Parse(json) as JsonObject;
+                if (settings == null)
+                {
+                    return;
+                }
+
+                var left = settings["Left"]?.GetValue<double>() ?? double.NaN;
+                var top = settings["Top"]?.GetValue<double>() ?? double.NaN;
+                var width = settings["Width"]?.GetValue<double>() ?? double.NaN;
+                var height = settings["Height"]?.GetValue<double>() ?? double.NaN;
+                var maximized = settings["Maximized"]?.GetValue<bool>() ?? true;
+
+                if (!double.IsNaN(left) && !double.IsNaN(top) && !double.IsNaN(width) && !double.IsNaN(height))
+                {
+                    Left = left;
+                    Top = top;
+                    Width = width;
+                    Height = height;
+                    WindowState = maximized ? WindowState.Maximized : WindowState.Normal;
+                }
+            }
+            catch
+            {
+                // Swallow restore failures; use defaults.
+            }
+        }
+
+        private void MainWindow_Closing(object? sender, CancelEventArgs e)
+        {
+            SaveWindowPosition();
         }
 
         private void UpdateEmptyStateImages()

@@ -11,7 +11,10 @@
         WindowState="Maximized"
         WindowStyle="None"
         Icon="pack://application:,,,/aribeth.png"
-        AllowsTransparency="False">
+        AllowsTransparency="False"
+        AllowDrop="True"
+        Drop="Window_Drop"
+        DragOver="Window_DragOver">
     <Window.CommandBindings>
         <CommandBinding Command="ApplicationCommands.Undo" Executed="UndoCommand_Executed" CanExecute="Command_CanExecute"/>
         <CommandBinding Command="ApplicationCommands.Redo" Executed="RedoCommand_Executed" CanExecute="Command_CanExecute"/>
